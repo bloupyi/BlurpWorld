@@ -280,6 +280,14 @@ public interface Server extends PluginMessageRecipient, net.kyori.adventure.audi
     public ServerTickManager getServerTickManager();
 
     /**
+     * Gets the manager for compressed, memory-backed worlds and snapshots.
+     *
+     * @return the BlurpWorld manager
+     */
+    @NotNull
+    public io.papermc.paper.blurpworld.BlurpWorldManager getBlurpWorldManager();
+
+    /**
      * Gets the resource pack configured to be sent to clients by the server.
      *
      * @return the resource pack

@@ -291,6 +291,7 @@ public final class CraftServer implements Server {
     public CraftScoreboardManager scoreboardManager;
     private final CraftServerTickManager serverTickManager;
     private final CraftServerLinks serverLinks;
+    private final io.papermc.paper.blurpworld.CraftBlurpWorldManager blurpWorldManager;
     private boolean printSaveWarning;
     private CraftIconCache icon;
     private boolean overrideAllCommandBlockCommands = false;
@@ -403,6 +404,7 @@ public final class CraftServer implements Server {
         this.structureManager = new CraftStructureManager(console.getStructureManager(), console.registryAccess());
         this.serverTickManager = new CraftServerTickManager(console.tickRateManager());
         this.serverLinks = new CraftServerLinks(console);
+        this.blurpWorldManager = new io.papermc.paper.blurpworld.CraftBlurpWorldManager(this);
 
         Bukkit.setServer(this);
         // Paper start
@@ -817,6 +819,11 @@ public final class CraftServer implements Server {
     @Override
     public ServerTickManager getServerTickManager() {
         return this.serverTickManager;
+    }
+
+    @Override
+    public io.papermc.paper.blurpworld.BlurpWorldManager getBlurpWorldManager() {
+        return this.blurpWorldManager;
     }
 
     @Override
@@ -1358,6 +1365,9 @@ public final class CraftServer implements Server {
 
         this.worlds.remove(world.getName().toLowerCase(Locale.ROOT));
         this.console.removeLevel(handle);
+        if (this.blurpWorldManager.isPrepared(world.getName())) {
+            this.blurpWorldManager.discard(world.getName());
+        }
         return true;
     }
 
@@ -1886,6 +1896,7 @@ public final class CraftServer implements Server {
 
     @Override
     public void shutdown() {
+        this.blurpWorldManager.close();
         this.console.halt(false);
     }
 

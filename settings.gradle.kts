@@ -37,6 +37,7 @@ for (name in listOf("paper-api", "paper-server")) {
 }
 
 include("paper-checkstyle")
+include("blurpworld-plugin")
 
 optionalInclude("test-plugin")
 optionalInclude("paper-generator")

@@ -1,0 +1,2 @@
+max-snapshot-megabytes: 512
+compression-level: 3
