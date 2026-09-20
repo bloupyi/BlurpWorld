@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import net.kyori.adventure.util.TriState;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
@@ -41,6 +40,7 @@ public final class BlurpWorldPlugin extends JavaPlugin {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "create" -> this.create(sender, args);
                 case "snapshot" -> this.snapshot(sender, args);
+                case "rename" -> this.rename(sender, args);
                 case "restore" -> this.restore(sender, args);
                 case "unload" -> this.unload(sender, args);
                 case "list" -> this.list(sender);
@@ -59,12 +59,12 @@ public final class BlurpWorldPlugin extends JavaPlugin {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
         if (args.length == 1) {
-            return filter(List.of("create", "snapshot", "restore", "unload", "list", "stats"), args[0]);
+            return filter(List.of("create", "snapshot", "rename", "restore", "unload", "list", "stats"), args[0]);
         }
         if (args.length == 2 && List.of("snapshot", "unload", "stats").contains(args[0].toLowerCase(Locale.ROOT))) {
             return filter(Bukkit.getWorlds().stream().map(World::getName).toList(), args[1]);
         }
-        if (args.length == 2 && args[0].equalsIgnoreCase("restore")) {
+        if (args.length == 2 && List.of("rename", "restore").contains(args[0].toLowerCase(Locale.ROOT))) {
             return filter(this.worlds.snapshots().stream().map(snapshot -> snapshot.id().toString()).toList(), args[1]);
         }
         return List.of();
@@ -86,7 +86,6 @@ public final class BlurpWorldPlugin extends JavaPlugin {
             throw new IllegalStateException("Paper could not create " + worldName);
         }
         world.setAutoSave(false);
-        world.setKeepSpawnInMemory(false);
         sender.sendMessage("Created compressed memory world " + worldName);
         return true;
     }
@@ -122,16 +121,47 @@ public final class BlurpWorldPlugin extends JavaPlugin {
             if (!Bukkit.unloadWorld(loaded, false)) {
                 throw new IllegalStateException("Could not unload " + worldName);
             }
+            this.worlds.discard(worldName);
         }
-        this.worlds.prepare(worldName, snapshotId);
+        sender.sendMessage("Restore preparation started for " + worldName);
+        this.worlds.prepareAsync(worldName, snapshotId).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null) {
+                sender.sendMessage("Restore failed: " + rootMessage(error));
+                return;
+            }
+            this.finishRestore(sender, snapshotId, worldName);
+        }));
+        return true;
+    }
+
+    private void finishRestore(CommandSender sender, UUID snapshotId, String worldName) {
         World restored = Bukkit.createWorld(worldCreator(worldName));
         if (restored == null) {
             this.worlds.discard(worldName);
-            throw new IllegalStateException("Paper could not restore " + worldName);
+            sender.sendMessage("Restore failed: Paper could not restore " + worldName);
+            return;
         }
         restored.setAutoSave(false);
-        restored.setKeepSpawnInMemory(false);
         sender.sendMessage("Restored snapshot " + snapshotId + " as " + worldName);
+    }
+
+    private boolean rename(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /blurpworld rename <snapshot-id> [label]");
+            return true;
+        }
+        UUID snapshotId = UUID.fromString(args[1]);
+        BlurpWorldSnapshot current = this.worlds.snapshot(snapshotId)
+            .orElseThrow(() -> new IllegalArgumentException("Unknown snapshot: " + snapshotId));
+        String snapshotLabel = args.length > 2 ? String.join(" ", List.of(args).subList(2, args.length)) : current.sourceWorld();
+        sender.sendMessage("Snapshot rename started for " + snapshotId);
+        this.worlds.renameSnapshot(snapshotId, snapshotLabel).whenComplete((snapshot, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null) {
+                sender.sendMessage("Snapshot rename failed: " + rootMessage(error));
+                return;
+            }
+            sender.sendMessage("Snapshot " + snapshot.id() + " renamed to " + snapshot.label());
+        }));
         return true;
     }
 
@@ -148,6 +178,7 @@ public final class BlurpWorldPlugin extends JavaPlugin {
         if (!Bukkit.unloadWorld(world, false)) {
             throw new IllegalStateException("Could not unload " + world.getName());
         }
+        this.worlds.discard(world.getName());
         sender.sendMessage("Unloaded and released " + world.getName());
         return true;
     }
@@ -167,13 +198,24 @@ public final class BlurpWorldPlugin extends JavaPlugin {
             sender.sendMessage("Usage: /blurpworld stats <world>");
             return true;
         }
-        BlurpWorldStatistics statistics = this.worlds.statistics(args[1]);
+        String worldName = args[1];
+        sender.sendMessage("Statistics calculation started for " + worldName);
+        this.worlds.statisticsAsync(worldName).whenComplete((statistics, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null) {
+                sender.sendMessage("Statistics failed: " + rootMessage(error));
+                return;
+            }
+            sendStatistics(sender, statistics);
+        }));
+        return true;
+    }
+
+    private static void sendStatistics(CommandSender sender, BlurpWorldStatistics statistics) {
         double ratio = statistics.uncompressedBytes() == 0L ? 1.0D : (double) statistics.compressedBytes() / statistics.uncompressedBytes();
         sender.sendMessage("World: " + statistics.worldName());
         sender.sendMessage("Stores: " + statistics.storageCount() + ", records: " + statistics.chunkCount());
         sender.sendMessage("Memory: " + formatBytes(statistics.compressedBytes()) + " compressed from " + formatBytes(statistics.uncompressedBytes()));
         sender.sendMessage("Ratio: " + String.format(Locale.ROOT, "%.2f%%", ratio * 100.0D));
-        return true;
     }
 
     private void evacuate(World world) {
@@ -197,8 +239,7 @@ public final class BlurpWorldPlugin extends JavaPlugin {
 
     private static WorldCreator worldCreator(String name) {
         return new WorldCreator(name)
-            .generator(new BlurpVoidGenerator())
-            .keepSpawnLoaded(TriState.FALSE);
+            .generator(new BlurpVoidGenerator());
     }
 
     private static List<String> filter(List<String> values, String prefix) {
@@ -228,6 +269,7 @@ public final class BlurpWorldPlugin extends JavaPlugin {
     private void usage(CommandSender sender) {
         sender.sendMessage("/blurpworld create <world>");
         sender.sendMessage("/blurpworld snapshot <world> [label]");
+        sender.sendMessage("/blurpworld rename <snapshot-id> [label]");
         sender.sendMessage("/blurpworld restore <snapshot-id> <world>");
         sender.sendMessage("/blurpworld unload <world>");
         sender.sendMessage("/blurpworld list");

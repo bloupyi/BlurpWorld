@@ -39,6 +39,14 @@ record BlurpSnapshotData(
         );
     }
 
+    BlurpSnapshotData withLabel(String label) {
+        BlurpSnapshotData renamed = new BlurpSnapshotData(
+            this.id, this.sourceWorld, label, this.createdAt, this.stores,
+            this.chunkCount, this.compressedBytes, this.uncompressedBytes, ""
+        );
+        return renamed.withSha256(BlurpSnapshotCodec.sha256(BlurpSnapshotCodec.encode(renamed)));
+    }
+
     BlurpWorldSnapshot metadata() {
         return new BlurpWorldSnapshot(
             this.id, this.sourceWorld, this.label, this.createdAt, this.chunkCount,

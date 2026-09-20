@@ -18,11 +18,11 @@ public final class BlurpMemoryRegionStore {
     }
 
     public boolean contains(int chunkX, int chunkZ) {
-        return this.chunks.containsKey(ChunkPos.asLong(chunkX, chunkZ));
+        return this.chunks.containsKey(ChunkPos.pack(chunkX, chunkZ));
     }
 
     public void write(int chunkX, int chunkZ, @Nullable CompoundTag tag) throws IOException {
-        long key = ChunkPos.asLong(chunkX, chunkZ);
+        long key = ChunkPos.pack(chunkX, chunkZ);
         this.world.writeLocked(() -> {
             if (tag == null) {
                 this.chunks.remove(key);
@@ -33,7 +33,7 @@ public final class BlurpMemoryRegionStore {
     }
 
     public @Nullable CompoundTag read(int chunkX, int chunkZ) throws IOException {
-        BlurpCompressedChunk chunk = this.chunks.get(ChunkPos.asLong(chunkX, chunkZ));
+        BlurpCompressedChunk chunk = this.chunks.get(ChunkPos.pack(chunkX, chunkZ));
         return chunk == null ? null : chunk.decode();
     }
 

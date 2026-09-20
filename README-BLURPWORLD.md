@@ -1,6 +1,6 @@
 # BlurpWorld
 
-BlurpWorld is a Paper 1.21.8 fork and companion plugin for disposable, compressed, memory-backed worlds.
+BlurpWorld is a Paper 26.2 fork and companion plugin for disposable, compressed, memory-backed worlds.
 
 ## Current implementation
 
@@ -9,6 +9,7 @@ BlurpWorld is a Paper 1.21.8 fork and companion plugin for disposable, compresse
 - Each record is compressed independently with Zstd for random access.
 - Snapshots are immutable, checksummed, importable, exportable, and retained in a bounded in-memory LRU.
 - `blurpworld-plugin` provides creation, snapshot, restore, unload, listing, and statistics commands.
+- Snapshot preparation, rename, import, export, and statistics have asynchronous API variants backed by virtual threads.
 - Newly created worlds use a void generator with a single bedrock spawn platform and do not keep spawn chunks loaded.
 
 World metadata such as `level.dat`, maps, and scoreboard state still uses Paper's regular world metadata path. Region payloads do not use Anvil files for prepared BlurpWorld worlds. Full metadata virtualization is the next storage milestone.
@@ -27,6 +28,7 @@ The server jar is produced under `paper-server/build/libs`. The plugin jar is pr
 ```text
 /blurpworld create <world>
 /blurpworld snapshot <world> [label]
+/blurpworld rename <snapshot-id> [label]
 /blurpworld restore <snapshot-id> <world>
 /blurpworld unload <world>
 /blurpworld list

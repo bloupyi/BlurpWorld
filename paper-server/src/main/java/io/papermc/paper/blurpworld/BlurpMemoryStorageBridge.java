@@ -40,6 +40,9 @@ public final class BlurpMemoryStorageBridge {
     public static @Nullable BlurpMemoryRegionStore attach(RegionStorageInfo info) {
         BlurpMemoryWorldStorage world = world(info.level());
         if (world == null) {
+            world = world(info.dimension().identifier().getPath());
+        }
+        if (world == null) {
             return null;
         }
         return world.store(info.type());

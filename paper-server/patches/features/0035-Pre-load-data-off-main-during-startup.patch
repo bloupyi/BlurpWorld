@@ -5,7 +5,7 @@ Subject: [PATCH] Pre-load data off-main during startup
 
 
 diff --git a/net/minecraft/server/Main.java b/net/minecraft/server/Main.java
-index a4d608d64b7d3477c9144d93547fd3b4f39a1b02..e2939cc39a8c103e4c4d7b01d39b5546486e4fbc 100644
+index 6ee2239f388c0a9d08a9b0e402839c8ca7d6e268..693ce1c23c7be6406eda22da57aa4a1b86a08f5f 100644
 --- a/net/minecraft/server/Main.java
 +++ b/net/minecraft/server/Main.java
 @@ -102,7 +102,10 @@ public class Main {

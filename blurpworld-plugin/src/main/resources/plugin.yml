@@ -1,7 +1,7 @@
 name: BlurpWorld
-version: '1.21.8-0.1.0-SNAPSHOT'
+version: '26.2-0.2.0-SNAPSHOT'
 main: dev.blurpworld.plugin.BlurpWorldPlugin
-api-version: '1.21'
+api-version: '26.2'
 load: STARTUP
 authors: [bloup]
 description: Controls compressed memory worlds and snapshots on BlurpWorld Paper.
@@ -9,7 +9,7 @@ commands:
   blurpworld:
     aliases: [bw]
     description: Manages BlurpWorld memory worlds and snapshots.
-    usage: /blurpworld <create|snapshot|restore|unload|list|stats>
+    usage: /blurpworld <create|snapshot|rename|restore|unload|list|stats>
     permission: blurpworld.admin
 permissions:
   blurpworld.admin:
