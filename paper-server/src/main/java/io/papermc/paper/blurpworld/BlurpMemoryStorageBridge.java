@@ -3,7 +3,11 @@ package io.papermc.paper.blurpworld;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import com.mojang.datafixers.DataFixer;
+import java.nio.file.Path;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
+import net.minecraft.world.level.storage.SavedDataStorage;
 import org.jspecify.annotations.Nullable;
 
 public final class BlurpMemoryStorageBridge {
@@ -46,6 +50,23 @@ public final class BlurpMemoryStorageBridge {
             return null;
         }
         return world.store(info.type());
+    }
+
+    public static boolean isPreparedWorld(String worldName) {
+        return world(worldName) != null;
+    }
+
+    public static SavedDataStorage createSavedDataStorage(
+        String worldName,
+        Path dataFolder,
+        DataFixer fixerUpper,
+        HolderLookup.Provider registries
+    ) {
+        BlurpMemoryWorldStorage world = world(worldName);
+        if (world == null) {
+            throw new IllegalStateException("No memory world is prepared with the name " + worldName);
+        }
+        return new SavedDataStorage(dataFolder, fixerUpper, registries, world.savedData());
     }
 
     static boolean discard(String worldName) {

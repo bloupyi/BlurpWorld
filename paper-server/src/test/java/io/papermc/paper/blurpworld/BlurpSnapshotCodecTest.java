@@ -8,7 +8,9 @@ import java.util.Map;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.ChunkPos;
 import org.junit.jupiter.api.Test;
+import org.bukkit.support.environment.Normal;
 
+@Normal
 class BlurpSnapshotCodecTest {
 
     @Test
@@ -16,9 +18,12 @@ class BlurpSnapshotCodecTest {
         CompoundTag tag = new CompoundTag();
         tag.putString("Status", "minecraft:full");
         tag.putInt("DataVersion", 4440);
+        CompoundTag metadata = new CompoundTag();
+        metadata.putLong("Time", 12000L);
         BlurpCompressedChunk chunk = BlurpCompressedChunk.encode(tag, 3);
         BlurpSnapshotData snapshot = BlurpSnapshotData.create(
-            "arena", "checkpoint", Map.of("minecraft:overworld/chunk", Map.of(ChunkPos.pack(2, -3), chunk))
+            "arena", "checkpoint", Map.of("minecraft:overworld/chunk", Map.of(ChunkPos.pack(2, -3), chunk)),
+            Map.of("minecraft:world_clocks", BlurpCompressedChunk.encode(metadata, 3))
         );
 
         byte[] encoded = BlurpSnapshotCodec.encode(snapshot);
@@ -29,6 +34,7 @@ class BlurpSnapshotCodecTest {
         assertEquals(snapshot.sha256(), decoded.sha256());
         assertEquals("minecraft:full", decodedTag.getStringOr("Status", ""));
         assertEquals(4440, decodedTag.getIntOr("DataVersion", 0));
+        assertEquals(12000L, decoded.savedData().get("minecraft:world_clocks").decode().getLongOr("Time", 0L));
     }
 
     @Test
@@ -41,7 +47,7 @@ class BlurpSnapshotCodecTest {
         CompoundTag tag = new CompoundTag();
         tag.putString("Status", "minecraft:full");
         BlurpSnapshotData original = BlurpSnapshotData.create(
-            "arena", "before", Map.of("chunk", Map.of(ChunkPos.pack(0, 0), BlurpCompressedChunk.encode(tag, 3)))
+            "arena", "before", Map.of("chunk", Map.of(ChunkPos.pack(0, 0), BlurpCompressedChunk.encode(tag, 3))), Map.of()
         );
 
         BlurpSnapshotData renamed = original.withLabel("after");

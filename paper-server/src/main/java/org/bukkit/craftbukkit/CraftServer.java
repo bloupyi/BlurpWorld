@@ -1210,26 +1210,39 @@ public final class CraftServer implements Server {
         if (configuredStem == null) {
             throw new IllegalStateException("Missing configured level stem " + actualDimension);
         }
-        try {
-            WorldFolderMigration.migrateApiWorld(
-                this.console.storageSource,
-                registryAccess,
-                name,
-                actualDimension,
-                dimensionKey
-            );
-        } catch (final IOException ex) {
-            throw new RuntimeException("Failed to migrate legacy world " + name, ex);
+        final boolean blurpMemoryWorld = io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(name);
+        if (!blurpMemoryWorld) {
+            try {
+                WorldFolderMigration.migrateApiWorld(
+                    this.console.storageSource,
+                    registryAccess,
+                    name,
+                    actualDimension,
+                    dimensionKey
+                );
+            } catch (final IOException ex) {
+                throw new RuntimeException("Failed to migrate legacy world " + name, ex);
+            }
         }
-        PaperWorldLoader.LoadedWorldData loadedWorldData = PaperWorldLoader.loadWorldData(
-            this.console,
-            dimensionKey,
-            name
-        );
+        final java.nio.file.Path dataPath = this.console.storageSource.getDimensionPath(dimensionKey).resolve(LevelResource.DATA.id());
+        final SavedDataStorage savedDataStorage = blurpMemoryWorld
+            ? io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.createSavedDataStorage(name, dataPath, this.console.getFixerUpper(), registryAccess)
+            : new SavedDataStorage(dataPath, this.console.getFixerUpper(), registryAccess);
+        PaperWorldLoader.LoadedWorldData loadedWorldData = blurpMemoryWorld
+            ? PaperWorldLoader.loadWorldData(this.console, dimensionKey, name, savedDataStorage)
+            : PaperWorldLoader.loadWorldData(this.console, dimensionKey, name);
+        if (blurpMemoryWorld) {
+            loadedWorldData = new PaperWorldLoader.LoadedWorldData(
+                loadedWorldData.bukkitName(),
+                UUID.randomUUID(),
+                loadedWorldData.pdc(),
+                loadedWorldData.levelOverrides()
+            );
+        }
         final PrimaryLevelData primaryLevelData = (PrimaryLevelData) this.console.getWorldData();
-        WorldGenSettings worldGenSettings = LevelStorageSource.readExistingSavedData(this.console.storageSource, dimensionKey, registryAccess, WorldGenSettings.TYPE)
-            .result()
-            .orElse(null);
+        WorldGenSettings worldGenSettings = blurpMemoryWorld
+            ? savedDataStorage.get(WorldGenSettings.TYPE)
+            : LevelStorageSource.readExistingSavedData(this.console.storageSource, dimensionKey, registryAccess, WorldGenSettings.TYPE).result().orElse(null);
         RegistryAccess contextRegistryAccess = registryAccess;
         if (worldGenSettings == null) {
             WorldOptions worldOptions = new WorldOptions(creator.seed(), creator.generateStructures(), creator.bonusChest());
@@ -1264,7 +1277,7 @@ public final class CraftServer implements Server {
 
         levelStemRegistry = contextRegistryAccess.lookupOrThrow(Registries.LEVEL_STEM);
 
-        if (this.console.options.has("forceUpgrade")) {
+        if (!blurpMemoryWorld && this.console.options.has("forceUpgrade")) {
             net.minecraft.server.Main.forceUpgrade(this.console.storageSource, DataFixers.getDataFixer(), this.console.options.has("eraseCache"), () -> true, contextRegistryAccess, this.console.options.has("recreateRegionFiles"));
         }
 
@@ -1282,7 +1295,6 @@ public final class CraftServer implements Server {
             biomeProvider = chunkGenerator.getDefaultBiomeProvider(worldInfo);
         }
 
-        final SavedDataStorage savedDataStorage = new SavedDataStorage(this.console.storageSource.getDimensionPath(dimensionKey).resolve(LevelResource.DATA.id()), this.console.getFixerUpper(), registryAccess);
         savedDataStorage.set(WorldGenSettings.TYPE, new WorldGenSettings(genSettingsFinal.options(), genSettingsFinal.dimensions()));
         List<CustomSpawner> list = ImmutableList.of(
             new PhantomSpawner(), new PatrolSpawner(), new CatSpawner(), new VillageSiege(), new WanderingTraderSpawner(savedDataStorage)

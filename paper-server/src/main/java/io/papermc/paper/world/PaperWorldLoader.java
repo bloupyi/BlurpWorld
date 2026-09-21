@@ -103,9 +103,18 @@ public record PaperWorldLoader(MinecraftServer server, String levelId) {
         final var registryAccess = server.registryAccess();
 
         final SavedDataStorage tempStorage = new SavedDataStorage(storageSource.getDimensionPath(dimension).resolve(LevelResource.DATA.id()), DataFixers.getDataFixer(), registryAccess);
-        final PaperWorldMetadata metadata = tempStorage.get(PaperWorldMetadata.TYPE);
-        final PaperWorldPDC pdc = tempStorage.get(PaperWorldPDC.TYPE);
-        final PaperLevelOverrides levelOverrides = tempStorage.get(PaperLevelOverrides.TYPE);
+        return loadWorldData(server, dimension, defaultName, tempStorage);
+    }
+
+    public static LoadedWorldData loadWorldData(
+        final MinecraftServer server,
+        final ResourceKey<Level> dimension,
+        final String defaultName,
+        final SavedDataStorage storage
+    ) {
+        final PaperWorldMetadata metadata = storage.get(PaperWorldMetadata.TYPE);
+        final PaperWorldPDC pdc = storage.get(PaperWorldPDC.TYPE);
+        final PaperLevelOverrides levelOverrides = storage.get(PaperLevelOverrides.TYPE);
 
         final LoadedWorldData data = new LoadedWorldData(
             defaultName,

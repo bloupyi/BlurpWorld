@@ -18,7 +18,7 @@ import java.util.UUID;
 final class BlurpSnapshotCodec {
 
     private static final byte[] MAGIC = "BLURPWLD".getBytes(StandardCharsets.US_ASCII);
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
 
     private BlurpSnapshotCodec() {
     }
@@ -45,6 +45,13 @@ final class BlurpSnapshotCodec {
                         data.write(chunk.getValue().data());
                     }
                 }
+                data.writeInt(snapshot.savedData().size());
+                for (Map.Entry<String, BlurpCompressedChunk> entry : snapshot.savedData().entrySet()) {
+                    data.writeUTF(entry.getKey());
+                    data.writeInt(entry.getValue().rawSize());
+                    data.writeInt(entry.getValue().data().length);
+                    data.write(entry.getValue().data());
+                }
             }
             return output.toByteArray();
         } catch (IOException exception) {
@@ -59,7 +66,7 @@ final class BlurpSnapshotCodec {
                 throw new IllegalArgumentException("Not a BlurpWorld snapshot");
             }
             int version = data.readInt();
-            if (version != VERSION) {
+            if (version < 1 || version > VERSION) {
                 throw new IllegalArgumentException("Unsupported BlurpWorld snapshot version: " + version);
             }
             UUID id = new UUID(data.readLong(), data.readLong());
@@ -84,16 +91,33 @@ final class BlurpSnapshotCodec {
                 }
                 stores.put(key, Map.copyOf(chunks));
             }
+            Map<String, BlurpCompressedChunk> savedData = new HashMap<>();
+            if (version >= 2) {
+                int savedDataCount = checkedCount(data.readInt(), "saved data");
+                for (int dataIndex = 0; dataIndex < savedDataCount; dataIndex++) {
+                    String key = data.readUTF();
+                    int rawSize = checkedSize(data.readInt(), "raw saved data");
+                    int compressedSize = checkedSize(data.readInt(), "compressed saved data");
+                    byte[] compressed = data.readNBytes(compressedSize);
+                    if (compressed.length != compressedSize) {
+                        throw new IllegalArgumentException("Truncated BlurpWorld snapshot");
+                    }
+                    savedData.put(key, new BlurpCompressedChunk(compressed, rawSize));
+                }
+            }
             if (data.available() != 0) {
                 throw new IllegalArgumentException("Trailing data in BlurpWorld snapshot");
             }
             int chunkCount = stores.values().stream().mapToInt(Map::size).sum();
-            long compressedBytes = stores.values().stream().flatMap(store -> store.values().stream()).mapToLong(chunk -> chunk.data().length).sum();
-            long uncompressedBytes = stores.values().stream().flatMap(store -> store.values().stream()).mapToLong(BlurpCompressedChunk::rawSize).sum();
-            return new BlurpSnapshotData(
-                id, sourceWorld, label, createdAt, Map.copyOf(stores), chunkCount,
-                compressedBytes, uncompressedBytes, sha256(encoded)
+            long compressedBytes = stores.values().stream().flatMap(store -> store.values().stream()).mapToLong(chunk -> chunk.data().length).sum()
+                + savedData.values().stream().mapToLong(value -> value.data().length).sum();
+            long uncompressedBytes = stores.values().stream().flatMap(store -> store.values().stream()).mapToLong(BlurpCompressedChunk::rawSize).sum()
+                + savedData.values().stream().mapToLong(BlurpCompressedChunk::rawSize).sum();
+            BlurpSnapshotData snapshot = new BlurpSnapshotData(
+                id, sourceWorld, label, createdAt, Map.copyOf(stores), Map.copyOf(savedData),
+                chunkCount, compressedBytes, uncompressedBytes, ""
             );
+            return snapshot.withSha256(sha256(encode(snapshot)));
         } catch (IOException exception) {
             throw new IllegalArgumentException("Invalid BlurpWorld snapshot", exception);
         }

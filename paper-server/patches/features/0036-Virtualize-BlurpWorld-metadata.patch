@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: bloup <preteseille06@gmail.com>
+Date: Mon, 21 Sep 2026 08:30:56 +0200
+Subject: [PATCH] Virtualize BlurpWorld metadata
+
+
+diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
+index 075e294333115738b25b64a390df323276cf39f9..8221b8b8a8d45fa3841dcef0be1b298ba8f482ae 100644
+--- a/net/minecraft/server/level/ServerChunkCache.java
++++ b/net/minecraft/server/level/ServerChunkCache.java
+@@ -201,10 +201,12 @@ public class ServerChunkCache extends ChunkSource implements ca.spottedleaf.moon
+         this.mainThread = Thread.currentThread();
+         Path dataFolder = levelStorage.getDimensionPath(level.dimension()).resolve("data");
+ 
+-        try {
+-            FileUtil.createDirectoriesSafe(dataFolder);
+-        } catch (IOException e) {
+-            LOGGER.error("Failed to create dimension data storage directory", e);
++        if (!io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(level.getWorld().getName())) {
++            try {
++                FileUtil.createDirectoriesSafe(dataFolder);
++            } catch (IOException e) {
++                LOGGER.error("Failed to create dimension data storage directory", e);
++            }
+         }
+ 
+         this.savedDataStorage = savedDataStorage; // Paper - initialize SavedDataStorage earlier
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 9415a75893a81f3d312117377b03aa440479599b..c038cb5d40599bb1f5efcfbeb17a4856cac3ab05 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -634,7 +634,12 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+         savedDataStorage.set(io.papermc.paper.world.saveddata.PaperWorldPDC.TYPE, loadedWorldData.pdc() == null ? io.papermc.paper.world.saveddata.PaperWorldPDC.TYPE.constructor().get() : loadedWorldData.pdc());
+         final GameRules gameRules = new GameRules(server.getWorldData().enabledFeatures(), savedDataStorage.computeIfAbsent(net.minecraft.world.level.gamerules.GameRuleMap.TYPE));
+         this.gameRules = gameRules;
+-        super(levelData, dimension, server.registryAccess(), levelStem.type(), false, isDebug, biomeZoomSeed, server.getMaxChainedNeighborUpdates(), loadedWorldData.bukkitName(), gen, biomeProvider, env, spigotConfig -> server.paperConfigurations.createWorldConfig(io.papermc.paper.configuration.PaperConfigurations.createWorldContextMap(server.storageSource.getDimensionPath(dimension), dimension.identifier(), spigotConfig, server.registryAccess(), gameRules)), executor); // Paper - create paper world configs // Paper - Anti-Xray - Pass executor
++        super(levelData, dimension, server.registryAccess(), levelStem.type(), false, isDebug, biomeZoomSeed, server.getMaxChainedNeighborUpdates(), loadedWorldData.bukkitName(), gen, biomeProvider, env, spigotConfig -> {
++            final io.papermc.paper.configuration.Configurations.ContextMap contextMap = io.papermc.paper.configuration.PaperConfigurations.createWorldContextMap(server.storageSource.getDimensionPath(dimension), dimension.identifier(), spigotConfig, server.registryAccess(), gameRules);
++            return io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(loadedWorldData.bukkitName())
++                ? server.paperConfigurations.createMemoryWorldConfig(contextMap)
++                : server.paperConfigurations.createWorldConfig(contextMap);
++        }, executor); // Paper - create paper world configs // Paper - Anti-Xray - Pass executor
+         this.weatherData = savedDataStorage.computeIfAbsent(WeatherData.TYPE);
+         this.weatherData.setLevel(this);
+         this.typeKey = typeKey;
+diff --git a/net/minecraft/world/level/storage/SavedDataStorage.java b/net/minecraft/world/level/storage/SavedDataStorage.java
+index f359e53024019f35aaa5cd8477da708bda2fc57a..61a961b8c6f3163461f0b0260cd120a06db3e946 100644
+--- a/net/minecraft/world/level/storage/SavedDataStorage.java
++++ b/net/minecraft/world/level/storage/SavedDataStorage.java
+@@ -44,13 +44,24 @@ public class SavedDataStorage implements AutoCloseable {
+     private final DataFixer fixerUpper;
+     private final HolderLookup.Provider registries;
+     private final Path dataFolder;
++    private final @Nullable Map<Identifier, CompoundTag> memoryData;
+     private CompletableFuture<?> pendingWriteFuture = CompletableFuture.completedFuture(null);
+     private boolean closed;
+ 
+     public SavedDataStorage(final Path dataFolder, final DataFixer fixerUpper, final HolderLookup.Provider registries) {
++        this(dataFolder, fixerUpper, registries, null);
++    }
++
++    public SavedDataStorage(
++        final Path dataFolder,
++        final DataFixer fixerUpper,
++        final HolderLookup.Provider registries,
++        final @Nullable Map<Identifier, CompoundTag> memoryData
++    ) {
+         this.fixerUpper = fixerUpper;
+         this.dataFolder = dataFolder;
+         this.registries = registries;
++        this.memoryData = memoryData;
+     }
+ 
+     private Path getDataFile(final Identifier id) {
+@@ -85,9 +96,17 @@ public class SavedDataStorage implements AutoCloseable {
+ 
+     private <T extends SavedData> @Nullable T readSavedData(final SavedDataType<T> type) {
+         try {
+-            Path file = this.getDataFile(type.id());
+-            if (Files.exists(file)) {
+-                CompoundTag tag = this.readTagFromDisk(file, type.dataFixType(), SharedConstants.getCurrentVersion().dataVersion().version());
++            CompoundTag tag = this.memoryData == null ? null : this.memoryData.get(type.id());
++            if (tag != null) {
++                int version = NbtUtils.getDataVersion(tag, 1343);
++                tag = type.dataFixType().update(this.fixerUpper, tag.copy(), version, SharedConstants.getCurrentVersion().dataVersion().version());
++            } else if (this.memoryData == null) {
++                Path file = this.getDataFile(type.id());
++                if (Files.exists(file)) {
++                    tag = this.readTagFromDisk(file, type.dataFixType(), SharedConstants.getCurrentVersion().dataVersion().version());
++                }
++            }
++            if (tag != null) {
+                 RegistryOps<Tag> ops = this.registries.createSerializationContext(NbtOps.INSTANCE);
+                 return type.codec()
+                     .parse(ops, tag.get("data"))
+@@ -204,6 +223,10 @@ public class SavedDataStorage implements AutoCloseable {
+     }
+ 
+     private void tryWrite(final SavedDataType<?> type, final CompoundTag tag) {
++        if (this.memoryData != null) {
++            this.memoryData.put(type.id(), tag.copy());
++            return;
++        }
+         Path path = this.getDataFile(type.id());
+ 
+         try {

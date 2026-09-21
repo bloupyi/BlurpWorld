@@ -325,6 +325,16 @@ public class PaperConfigurations extends Configurations<GlobalConfiguration, Wor
     }
 
     @Override
+    public WorldConfiguration createMemoryWorldConfig(final ContextMap contextMap) {
+        final String levelKey = contextMap.require(WORLD_KEY).toString();
+        try {
+            return super.createMemoryWorldConfig(contextMap);
+        } catch (IOException exception) {
+            throw new RuntimeException("Could not create memory world config for " + levelKey, exception);
+        }
+    }
+
+    @Override
     protected boolean isConfigType(final Type type) {
         return ConfigurationPart.class.isAssignableFrom(erase(type));
     }
@@ -334,7 +344,12 @@ public class PaperConfigurations extends Configurations<GlobalConfiguration, Wor
             this.initializeGlobalConfiguration(server.registryAccess(), reloader(this.globalConfigClass, GlobalConfiguration.get()));
             this.initializeWorldDefaultsConfiguration(server.registryAccess());
             for (ServerLevel level : server.getAllLevels()) {
-                this.createWorldConfig(createWorldContextMap(level), reloader(this.worldConfigClass, level.paperConfig()));
+                final ContextMap contextMap = createWorldContextMap(level);
+                if (io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(level.getWorld().getName())) {
+                    this.createMemoryWorldConfig(contextMap, reloader(this.worldConfigClass, level.paperConfig()));
+                } else {
+                    this.createWorldConfig(contextMap, reloader(this.worldConfigClass, level.paperConfig()));
+                }
             }
         } catch (Exception ex) {
             throw new RuntimeException("Could not reload paper configuration files", ex);

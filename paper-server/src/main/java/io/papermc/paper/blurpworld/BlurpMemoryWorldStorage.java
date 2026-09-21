@@ -1,10 +1,13 @@
 package io.papermc.paper.blurpworld;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.Identifier;
 
 final class BlurpMemoryWorldStorage {
 
@@ -15,6 +18,7 @@ final class BlurpMemoryWorldStorage {
 
     private final String worldName;
     private final ConcurrentHashMap<String, BlurpMemoryRegionStore> stores = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Identifier, CompoundTag> savedData = new ConcurrentHashMap<>();
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     BlurpMemoryWorldStorage(String worldName) {
@@ -23,6 +27,10 @@ final class BlurpMemoryWorldStorage {
 
     BlurpMemoryRegionStore store(String key) {
         return this.stores.computeIfAbsent(key, ignored -> new BlurpMemoryRegionStore(this));
+    }
+
+    Map<Identifier, CompoundTag> savedData() {
+        return this.savedData;
     }
 
     void writeLocked(IoRunnable operation) throws IOException {
@@ -39,7 +47,15 @@ final class BlurpMemoryWorldStorage {
         try {
             Map<String, Map<Long, BlurpCompressedChunk>> copiedStores = new HashMap<>();
             this.stores.forEach((key, store) -> copiedStores.put(key, store.copyChunks()));
-            return BlurpSnapshotData.create(this.worldName, label, copiedStores);
+            Map<String, BlurpCompressedChunk> copiedSavedData = new HashMap<>();
+            this.savedData.forEach((key, data) -> {
+                try {
+                    copiedSavedData.put(key.toString(), BlurpCompressedChunk.encode(data, BlurpMemoryStorageBridge.configuration().compressionLevel()));
+                } catch (IOException exception) {
+                    throw new UncheckedIOException(exception);
+                }
+            });
+            return BlurpSnapshotData.create(this.worldName, label, copiedStores, copiedSavedData);
         } finally {
             this.lock.writeLock().unlock();
         }
@@ -50,6 +66,14 @@ final class BlurpMemoryWorldStorage {
         try {
             this.stores.clear();
             snapshot.stores().forEach((key, chunks) -> this.store(key).replaceChunks(chunks));
+            this.savedData.clear();
+            snapshot.savedData().forEach((key, data) -> {
+                try {
+                    this.savedData.put(Identifier.parse(key), data.decode());
+                } catch (IOException exception) {
+                    throw new UncheckedIOException(exception);
+                }
+            });
         } finally {
             this.lock.writeLock().unlock();
         }

@@ -208,6 +208,33 @@ public abstract class Configurations<G, W> {
         return this.createWorldConfig(contextMap, creator(this.worldConfigClass, false));
     }
 
+    public W createMemoryWorldConfig(final ContextMap contextMap) throws IOException {
+        return this.createMemoryWorldConfig(contextMap, creator(this.worldConfigClass, false));
+    }
+
+    protected W createMemoryWorldConfig(
+        final ContextMap contextMap,
+        final CheckedFunction<ConfigurationNode, W, SerializationException> creator
+    ) throws IOException {
+        Preconditions.checkArgument(!contextMap.isDefaultWorldContext(), "cannot create world map with default world context");
+        final Path defaultsConfigFile = this.globalFolder.resolve(this.defaultWorldConfigFileName);
+        final YamlConfigurationLoader defaultsLoader = this.createDefaultWorldLoader(
+            true,
+            this.createDefaultContextMap(contextMap.require(REGISTRY_ACCESS)).build(),
+            defaultsConfigFile
+        ).loader();
+        final ConfigurationNode defaultsNode = defaultsLoader.load();
+        final YamlConfigurationLoader memoryLoader = this.createWorldConfigLoaderBuilder(contextMap)
+            .defaultOptions(this.applyObjectMapperFactory(this.createWorldObjectMapperFactoryBuilder(contextMap).build()))
+            .build();
+        final ConfigurationNode worldNode = CommentedConfigurationNode.root(memoryLoader.defaultOptions());
+        worldNode.node(Configuration.VERSION_FIELD).set(this.worldConfigVersion());
+        this.applyWorldConfigTransformations(contextMap, worldNode, defaultsNode);
+        this.applyDefaultsAwareWorldConfigTransformations(contextMap, worldNode, defaultsNode);
+        worldNode.mergeFrom(defaultsNode);
+        return creator.apply(worldNode);
+    }
+
     protected W createWorldConfig(final ContextMap contextMap, final CheckedFunction<ConfigurationNode, W, SerializationException> creator) throws IOException {
         Preconditions.checkArgument(!contextMap.isDefaultWorldContext(), "cannot create world map with default world context");
         final Path defaultsConfigFile = this.globalFolder.resolve(this.defaultWorldConfigFileName);
