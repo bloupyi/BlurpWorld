@@ -7,7 +7,8 @@ BlurpWorld is a Paper 26.2 fork and companion plugin for disposable, compressed,
 - `paper-api` exposes `Server#getBlurpWorldManager()`.
 - Chunk, entity, and POI NBT are intercepted below Bukkit at Paper's region-storage boundary.
 - Each record is compressed independently with Zstd for random access.
-- Snapshots are immutable, checksummed, importable, exportable, and retained in a bounded in-memory LRU.
+- Snapshots are immutable, checksummed, importable, exportable, and retained in a bounded in-memory store.
+- Snapshot creation and import are cancelled when the configured compressed-memory budget would be exceeded; existing snapshots are never evicted automatically.
 - Snapshot archives include world generation settings, seed, time, spawn, gamerules, weather, border, PDC, raids, scheduled events, and chunk tickets. Restored instances receive a fresh Paper world UUID so multiple clones can coexist.
 - `blurpworld-plugin` provides creation, snapshot, restore, unload, listing, and statistics commands.
 - Snapshot preparation, rename, import, export, and statistics have asynchronous API variants backed by virtual threads.

@@ -1,2 +1,4 @@
+# Total compressed snapshot budget. New snapshots are cancelled when this limit would be exceeded.
 max-snapshot-megabytes: 512
+# Zstandard compression level, from -7 (fastest) to 22 (smallest output).
 compression-level: 3

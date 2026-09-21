@@ -5,7 +5,7 @@ import org.jspecify.annotations.NullMarked;
 /**
  * Configuration shared by compressed memory worlds and their snapshots.
  *
- * @param maxSnapshotBytes total compressed snapshot budget
+ * @param maxSnapshotBytes total compressed snapshot budget; new snapshots are rejected when it would be exceeded
  * @param compressionLevel Zstandard compression level, from -7 to 22
  */
 @NullMarked
@@ -19,7 +19,7 @@ public record BlurpWorldConfiguration(long maxSnapshotBytes, int compressionLeve
     /**
      * Creates a configuration.
      *
-     * @param maxSnapshotBytes total compressed snapshot budget
+     * @param maxSnapshotBytes total compressed snapshot budget; new snapshots are rejected when it would be exceeded
      * @param compressionLevel Zstandard compression level, from -7 to 22
      */
     public BlurpWorldConfiguration {

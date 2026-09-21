@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -18,7 +17,7 @@ public final class CraftBlurpWorldManager implements BlurpWorldManager, AutoClos
 
     private final CraftServer server;
     private final ExecutorService asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
-    private final LinkedHashMap<UUID, BlurpSnapshotData> snapshots = new LinkedHashMap<>(16, 0.75F, true);
+    private final LinkedHashMap<UUID, BlurpSnapshotData> snapshots = new LinkedHashMap<>();
     private long snapshotBytes;
 
     public CraftBlurpWorldManager(CraftServer server) {
@@ -33,7 +32,6 @@ public final class CraftBlurpWorldManager implements BlurpWorldManager, AutoClos
     @Override
     public synchronized void configure(BlurpWorldConfiguration configuration) {
         BlurpMemoryStorageBridge.configure(configuration);
-        this.evictToLimit();
     }
 
     @Override
@@ -211,24 +209,24 @@ public final class CraftBlurpWorldManager implements BlurpWorldManager, AutoClos
     }
 
     private synchronized void storeSnapshot(BlurpSnapshotData snapshot) {
-        if (snapshot.compressedBytes() > this.configuration().maxSnapshotBytes()) {
-            throw new IllegalStateException("Snapshot exceeds the configured memory limit");
-        }
-        BlurpSnapshotData previous = this.snapshots.put(snapshot.id(), snapshot);
-        if (previous != null) {
-            this.snapshotBytes -= previous.compressedBytes();
-        }
-        this.snapshotBytes += snapshot.compressedBytes();
-        this.evictToLimit();
+        long limit = this.configuration().maxSnapshotBytes();
+        BlurpSnapshotData previous = this.snapshots.get(snapshot.id());
+        long previousBytes = previous == null ? 0L : previous.compressedBytes();
+        long projectedBytes = checkedProjectedSnapshotBytes(this.snapshotBytes, previousBytes, snapshot.compressedBytes(), limit);
+        this.snapshots.put(snapshot.id(), snapshot);
+        this.snapshotBytes = projectedBytes;
     }
 
-    private void evictToLimit() {
-        long limit = this.configuration().maxSnapshotBytes();
-        while (this.snapshotBytes > limit && !this.snapshots.isEmpty()) {
-            Map.Entry<UUID, BlurpSnapshotData> eldest = this.snapshots.entrySet().iterator().next();
-            this.snapshotBytes -= eldest.getValue().compressedBytes();
-            this.snapshots.remove(eldest.getKey());
+    static long checkedProjectedSnapshotBytes(long currentBytes, long previousBytes, long newBytes, long limit) {
+        long retainedBytes = Math.subtractExact(currentBytes, previousBytes);
+        long projectedBytes = Math.addExact(retainedBytes, newBytes);
+        if (projectedBytes > limit) {
+            long availableBytes = Math.max(0L, limit - retainedBytes);
+            throw new IllegalStateException(
+                "Snapshot cancelled: " + newBytes + " compressed bytes required, but only " + availableBytes + " remain"
+            );
         }
+        return projectedBytes;
     }
 
     private static BlurpMemoryWorldStorage requireWorld(String worldName) {
