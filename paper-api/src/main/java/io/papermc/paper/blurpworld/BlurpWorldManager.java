@@ -50,6 +50,15 @@ public interface BlurpWorldManager {
     CompletableFuture<Void> prepareAsync(String worldName, UUID snapshotId);
 
     /**
+     * Asynchronously decodes an archive and prepares an unloaded world without retaining an in-memory snapshot.
+     *
+     * @param worldName destination world name
+     * @param archive  encoded BlurpWorld archive
+     * @return metadata from the decoded archive
+     */
+    CompletableFuture<BlurpWorldSnapshot> prepareFromArchiveAsync(String worldName, byte[] archive);
+
+    /**
      * @param worldName world name
      * @return whether compressed memory storage exists for the name
      */
@@ -117,6 +126,16 @@ public interface BlurpWorldManager {
      * @return encoded snapshot archive
      */
     CompletableFuture<byte[]> exportSnapshotAsync(UUID snapshotId);
+
+    /**
+     * Asynchronously captures and encodes the current memory storage for a world without retaining a snapshot.
+     * The caller must save the Bukkit world first when it needs all pending chunk changes flushed.
+     *
+     * @param world memory world to export
+     * @param label archive label
+     * @return encoded BlurpWorld archive
+     */
+    CompletableFuture<byte[]> exportWorldAsync(World world, String label);
 
     /**
      * @param data encoded snapshot archive

@@ -67,6 +67,19 @@ public final class CraftBlurpWorldManager implements BlurpWorldManager, AutoClos
     }
 
     @Override
+    public CompletableFuture<BlurpWorldSnapshot> prepareFromArchiveAsync(String worldName, byte[] archive) {
+        validateWorldName(worldName);
+        Preconditions.checkState(this.server.getWorld(worldName) == null, "World %s is already loaded", worldName);
+        Preconditions.checkArgument(archive.length <= this.configuration().maxSnapshotBytes(), "Snapshot archive exceeds the configured memory limit");
+        byte[] encoded = archive.clone();
+        return CompletableFuture.supplyAsync(() -> {
+            BlurpSnapshotData snapshot = BlurpSnapshotCodec.decode(encoded);
+            BlurpMemoryStorageBridge.prepare(worldName, snapshot);
+            return snapshot.metadata();
+        }, this.asyncExecutor);
+    }
+
+    @Override
     public boolean isPrepared(String worldName) {
         return BlurpMemoryStorageBridge.contains(worldName);
     }
@@ -168,6 +181,14 @@ public final class CraftBlurpWorldManager implements BlurpWorldManager, AutoClos
             throw new IllegalArgumentException("Unknown snapshot: " + snapshotId);
         }
         return CompletableFuture.supplyAsync(() -> BlurpSnapshotCodec.encode(snapshot), this.asyncExecutor);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> exportWorldAsync(World world, String label) {
+        Preconditions.checkArgument(this.isMemoryWorld(world), "World %s is not memory-backed", world.getName());
+        validateLabel(label);
+        BlurpMemoryWorldStorage storage = requireWorld(world.getName());
+        return CompletableFuture.supplyAsync(() -> BlurpSnapshotCodec.encode(storage.snapshot(label)), this.asyncExecutor);
     }
 
     @Override

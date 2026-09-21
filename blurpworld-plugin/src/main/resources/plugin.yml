@@ -9,7 +9,7 @@ commands:
   blurpworld:
     aliases: [bw]
     description: Manages BlurpWorld memory worlds and snapshots.
-    usage: /blurpworld <create|snapshot|rename|restore|unload|list|stats>
+    usage: /blurpworld <create|snapshot|rename|restore|unload|list|stats|import|export|tp|reload>
     permission: blurpworld.admin
 permissions:
   blurpworld.admin:
