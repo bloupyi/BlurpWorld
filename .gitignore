@@ -50,3 +50,26 @@ paper-generator.settings.gradle.kts
 
 # Don't track patched vanilla submodules
 paper-server/src/minecraft/
+
+# Local development state
+/.serena/
+/graphify-out/
+/test-server/
+
+# Separate repositories
+/integrations/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime and crash output
+*.log
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# Windows filesystem metadata
+Thumbs.db
+Desktop.ini
