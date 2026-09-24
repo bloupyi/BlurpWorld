@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: bloup <preteseille06@gmail.com>
+Date: Thu, 24 Sep 2026 10:19:00 +0000
+Subject: [PATCH] Skip world generation setup for BlurpWorld memory worlds
+
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 7e9361407042ddaabe3f66ee8957ae84b6ef2317..5551279d6cb09e28aca448666d9c4e99174fe00d 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -204,14 +204,17 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+         if (randomGenerator instanceof org.bukkit.craftbukkit.generator.CustomChunkGenerator customChunkGenerator) {
+             randomGenerator = customChunkGenerator.getDelegate();
+         }
+-        if (randomGenerator instanceof NoiseBasedChunkGenerator noiseGenerator) {
++        final boolean blurpMemoryWorld = io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(level.getWorld().getName()); // BlurpWorld - memory worlds never generate terrain
++        if (!blurpMemoryWorld && randomGenerator instanceof NoiseBasedChunkGenerator noiseGenerator) { // BlurpWorld - skip the noise router
+             // CraftBukkit end
+             this.randomState = RandomState.create(noiseGenerator.generatorSettings().value(), registryAccess.lookupOrThrow(Registries.NOISE), levelSeed);
+         } else {
+             this.randomState = RandomState.create(NoiseGeneratorSettings.dummy(), registryAccess.lookupOrThrow(Registries.NOISE), levelSeed);
+         }
+ 
+-        this.chunkGeneratorState = generator.createState(registryAccess.lookupOrThrow(Registries.STRUCTURE_SET), this.randomState, levelSeed, level.spigotConfig); // Spigot
++        this.chunkGeneratorState = blurpMemoryWorld // BlurpWorld start - no structure placement, so no stronghold ring computation either
++            ? net.minecraft.world.level.chunk.ChunkGeneratorStructureState.createForFlat(this.randomState, levelSeed, generator.getBiomeSource(), java.util.stream.Stream.empty(), level.spigotConfig)
++            : generator.createState(registryAccess.lookupOrThrow(Registries.STRUCTURE_SET), this.randomState, levelSeed, level.spigotConfig); // Spigot // BlurpWorld end
+         this.mainThreadExecutor = mainThreadExecutor;
+         ConsecutiveExecutor worldgen = new ConsecutiveExecutor(executor, "worldgen");
+         this.chunkStatusListener = chunkStatusListener;

@@ -3,7 +3,6 @@ package dev.blurpworld.plugin;
 import java.util.List;
 import java.util.Random;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Biome;
 import org.bukkit.generator.BiomeProvider;
@@ -11,24 +10,11 @@ import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.generator.WorldInfo;
 import org.jetbrains.annotations.NotNull;
 
+// Memory worlds never generate terrain: this only provides the spawn location and a fixed biome.
 final class BlurpVoidGenerator extends ChunkGenerator {
 
     @Override
-    public void generateSurface(
-        @NotNull WorldInfo worldInfo,
-        @NotNull Random random,
-        int chunkX,
-        int chunkZ,
-        @NotNull ChunkData chunkData
-    ) {
-        if (chunkX == 0 && chunkZ == 0) {
-            chunkData.setRegion(0, 64, 0, 16, 65, 16, Material.BEDROCK);
-        }
-    }
-
-    @Override
     public BiomeProvider getDefaultBiomeProvider(@NotNull WorldInfo worldInfo) {
-        // A fixed biome keeps generation of the empty chunks around a map cheap; stored chunks keep their own biomes
         return VoidBiomeProvider.INSTANCE;
     }
 

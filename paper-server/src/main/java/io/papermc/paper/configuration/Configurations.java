@@ -41,6 +41,7 @@ public abstract class Configurations<G, W> {
     protected final String globalConfigFileName;
     protected final String defaultWorldConfigFileName;
     protected final String worldConfigFileName;
+    private volatile @Nullable ConfigurationNode memoryWorldDefaults; // BlurpWorld - parsed once instead of for each memory world
 
     public Configurations(
         final Path globalFolder,
@@ -159,6 +160,7 @@ public abstract class Configurations<G, W> {
     }
 
     public void initializeWorldDefaultsConfiguration(final RegistryAccess registryAccess) throws ConfigurateException {
+        this.memoryWorldDefaults = null; // BlurpWorld
         final ContextMap contextMap = this.createDefaultContextMap(registryAccess)
             .put(FIRST_DEFAULT)
             .build();
@@ -217,13 +219,18 @@ public abstract class Configurations<G, W> {
         final CheckedFunction<ConfigurationNode, W, SerializationException> creator
     ) throws IOException {
         Preconditions.checkArgument(!contextMap.isDefaultWorldContext(), "cannot create world map with default world context");
-        final Path defaultsConfigFile = this.globalFolder.resolve(this.defaultWorldConfigFileName);
-        final YamlConfigurationLoader defaultsLoader = this.createDefaultWorldLoader(
-            true,
-            this.createDefaultContextMap(contextMap.require(REGISTRY_ACCESS)).build(),
-            defaultsConfigFile
-        ).loader();
-        final ConfigurationNode defaultsNode = defaultsLoader.load();
+        ConfigurationNode cachedDefaults = this.memoryWorldDefaults;
+        if (cachedDefaults == null) {
+            final Path defaultsConfigFile = this.globalFolder.resolve(this.defaultWorldConfigFileName);
+            final YamlConfigurationLoader defaultsLoader = this.createDefaultWorldLoader(
+                true,
+                this.createDefaultContextMap(contextMap.require(REGISTRY_ACCESS)).build(),
+                defaultsConfigFile
+            ).loader();
+            cachedDefaults = defaultsLoader.load();
+            this.memoryWorldDefaults = cachedDefaults;
+        }
+        final ConfigurationNode defaultsNode = cachedDefaults.copy();
         final YamlConfigurationLoader memoryLoader = this.createWorldConfigLoaderBuilder(contextMap)
             .defaultOptions(this.applyObjectMapperFactory(this.createWorldObjectMapperFactoryBuilder(contextMap).build()))
             .build();

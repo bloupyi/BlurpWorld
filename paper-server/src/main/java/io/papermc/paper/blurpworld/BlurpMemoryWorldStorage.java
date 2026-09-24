@@ -26,7 +26,7 @@ final class BlurpMemoryWorldStorage {
     }
 
     BlurpMemoryRegionStore store(String key) {
-        return this.stores.computeIfAbsent(key, ignored -> new BlurpMemoryRegionStore(this));
+        return this.stores.computeIfAbsent(key, ignored -> new BlurpMemoryRegionStore(this, BlurpMemoryRegionStore.CHUNK_STORE.equals(key)));
     }
 
     Map<Identifier, CompoundTag> savedData() {

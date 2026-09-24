@@ -25,6 +25,8 @@ import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.command.Command;
@@ -191,13 +193,15 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
             throw new IllegalStateException("Paper could not create " + worldName);
         }
         world.setAutoSave(false);
-        this.preloadSpawn(world).whenComplete((ignored, error) -> this.runMain(() -> {
-            if (error != null) {
-                sender.sendMessage("Created " + worldName + " in " + elapsed(started) + ", but spawn preload failed: " + rootMessage(error));
-                return;
+        // Memory worlds never generate terrain, so the spawn platform is placed directly
+        Location spawn = world.getSpawnLocation();
+        int platformY = spawn.getBlockY() - 1;
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                world.getBlockAt(x, platformY, z).setType(Material.BEDROCK, false);
             }
-            sender.sendMessage("Created compressed memory world " + worldName + " and preloaded its spawn in " + elapsed(started));
-        }));
+        }
+        sender.sendMessage("Created compressed memory world " + worldName + " in " + elapsed(started));
         return true;
     }
 
@@ -255,13 +259,7 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
             return;
         }
         restored.setAutoSave(false);
-        this.preloadSpawn(restored).whenComplete((ignored, error) -> this.runMain(() -> {
-            if (error != null) {
-                sender.sendMessage("Restored snapshot " + snapshotId + " as " + worldName + " in " + elapsed(started) + ", but spawn preload failed: " + rootMessage(error));
-                return;
-            }
-            sender.sendMessage("Restored snapshot " + snapshotId + " as " + worldName + " in " + elapsed(started));
-        }));
+        sender.sendMessage("Restored snapshot " + snapshotId + " as " + worldName + " in " + elapsed(started));
     }
 
     private boolean rename(CommandSender sender, String[] args) {
@@ -369,10 +367,8 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
                 if (savable) {
                     this.linkedArchives.put(normalize(worldName), new LinkedArchive(worldName, archive));
                 }
-                return new ImportedWorld(world, snapshot, null);
+                return world;
             }))
-            .thenCompose(imported -> this.preloadSpawn(imported.world())
-                .handle((ignored, error) -> new ImportedWorld(imported.world(), imported.snapshot(), error)))
             .whenComplete((imported, error) -> this.runMain(() -> {
                 if (error != null) {
                     if (Bukkit.getWorld(worldName) == null && this.worlds.isPrepared(worldName)) {
@@ -383,11 +379,6 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
                 }
                 this.archiveNames.add(archive.getFileName().toString());
                 String linkStatus = savable ? ", linked saves enabled" : ", unlinked";
-                if (imported.preloadError() != null) {
-                    sender.sendMessage("Imported " + worldName + " in " + elapsed(started) + linkStatus
-                        + ", but spawn preload failed: " + rootMessage(imported.preloadError()));
-                    return;
-                }
                 sender.sendMessage("Imported " + worldName + " from " + archive.getFileName() + " in " + elapsed(started) + linkStatus);
             }));
         return true;
@@ -606,11 +597,6 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
         }, this.ioExecutor);
     }
 
-    private CompletableFuture<Void> preloadSpawn(World world) {
-        // The server warms the chunks visible from spawn itself when a memory world is created
-        return this.worlds.spawnWarmup(world);
-    }
-
     private <T> CompletableFuture<T> onMain(Supplier<T> action) {
         if (Bukkit.isPrimaryThread()) {
             try {
@@ -722,6 +708,4 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
     private record LinkedArchive(String worldName, Path path) {
     }
 
-    private record ImportedWorld(World world, BlurpWorldSnapshot snapshot, Throwable preloadError) {
-    }
 }

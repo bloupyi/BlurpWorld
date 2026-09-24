@@ -71,18 +71,6 @@ public interface BlurpWorldManager {
     boolean isMemoryWorld(World world);
 
     /**
-     * Returns the spawn warmup of a memory world.
-     * <p>
-     * When a memory world is created, the server loads every chunk a player sees from its spawn to full status without
-     * ticking them, and hands them over to the first player that enters the world. Waiting for this future before
-     * sending players avoids any chunk loading or generation burst on arrival.
-     *
-     * @param world memory world to inspect
-     * @return completes once the spawn area is loaded, or immediately when no warmup is pending
-     */
-    CompletableFuture<Void> spawnWarmup(World world);
-
-    /**
      * Discards storage for an unloaded memory world.
      *
      * @param worldName world name

@@ -80,6 +80,10 @@ public class SpigotConfig {
     }
 
     public static void readConfig(Class<?> clazz, Object instance) {
+        readConfig(clazz, instance, true); // BlurpWorld
+    }
+
+    public static void readConfig(Class<?> clazz, Object instance, boolean save) { // BlurpWorld
         for (Method method : clazz.getDeclaredMethods()) {
             if (Modifier.isPrivate(method.getModifiers())) {
                 if (method.getParameterTypes().length == 0 && method.getReturnType() == Void.TYPE) {
@@ -95,6 +99,9 @@ public class SpigotConfig {
             }
         }
 
+        if (!save) { // BlurpWorld
+            return;
+        }
         try {
             SpigotConfig.config.save(SpigotConfig.CONFIG_FILE);
         } catch (IOException ex) {

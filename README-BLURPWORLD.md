@@ -15,10 +15,11 @@ It is fully usable on its own. SubServer is an optional integration, not a runti
 - `.bws` archives can be imported directly into a world without occupying the retained-snapshot budget, and live worlds can be exported without creating a retained snapshot.
 - Imported worlds can optionally be linked to their archive. Linked saves replace the archive atomically; linking is disabled by default.
 - Snapshot preparation, rename, import, export, and statistics have asynchronous API variants backed by virtual threads.
-- Newly created worlds use a void generator with a single bedrock spawn platform and do not keep spawn chunks loaded.
-- When a memory world loads, the server itself brings every chunk visible from spawn (view distance + 1) to full status without ticking it, then hands the area over to the first player that enters. `BlurpWorldManager#spawnWarmup(World)` completes once that area is ready; creation, restore, and import wait for it before reporting completion, so the first join no longer triggers a burst of chunk loads.
+- Newly created worlds get a single bedrock spawn platform placed by the plugin and do not keep spawn chunks loaded.
+- Memory worlds never run terrain generation. A chunk missing from the store is loaded directly as an empty full chunk, like a saved void chunk and like ASP slime worlds, so no generator, biome noise, structure placement or lighting pass runs. Nothing needs preloading: a 6x6 chunk archive loads in about 100 ms and the 529 chunks a joining player asks for are ready in under a second without a lag spike.
+- Memory worlds also skip the noise router, the stronghold ring computation and the rewrite of `spigot.yml` when they are created, and reuse the parsed Paper world defaults.
 - Memory chunk reads only hand the compressed record to Paper's I/O thread; Zstd and NBT decoding run on the parallel decompression workers.
-- The void generators use a fixed biome, and Bukkit biome providers that ignore `BiomeParameterPoint` no longer pay for vanilla climate sampling, so generating the empty chunks around a map is cheap.
+- Bukkit biome providers that ignore `BiomeParameterPoint` no longer pay for vanilla climate sampling.
 - Players still inside memory worlds are moved to a persistent fallback world before shutdown player data is saved.
 
 Prepared BlurpWorld dimensions do not create a world folder, `level.dat`, `paper-world.yml`, region files, or saved-data files. Paper's world defaults are materialized in memory, while restored metadata is injected from the snapshot before the `ServerLevel` is constructed.

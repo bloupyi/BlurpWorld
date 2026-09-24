@@ -33,7 +33,8 @@ public class SpigotWorldConfig {
         }
 
         this.log("-------- World Settings For [" + this.worldName + "] --------");
-        SpigotConfig.readConfig(SpigotWorldConfig.class, this);
+        // BlurpWorld - memory worlds only read the shared defaults, rewriting spigot.yml for each of them is wasted disk I/O
+        SpigotConfig.readConfig(SpigotWorldConfig.class, this, !io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(this.legacyWorldName));
     }
 
     private void log(String s) {
