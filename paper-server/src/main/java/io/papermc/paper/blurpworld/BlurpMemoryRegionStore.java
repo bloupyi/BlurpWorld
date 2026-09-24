@@ -1,5 +1,6 @@
 package io.papermc.paper.blurpworld;
 
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,6 +36,18 @@ public final class BlurpMemoryRegionStore {
     public @Nullable CompoundTag read(int chunkX, int chunkZ) throws IOException {
         BlurpCompressedChunk chunk = this.chunks.get(ChunkPos.pack(chunkX, chunkZ));
         return chunk == null ? null : chunk.decode();
+    }
+
+    public @Nullable DataInputStream openRead(int chunkX, int chunkZ) {
+        BlurpCompressedChunk chunk = this.chunks.get(ChunkPos.pack(chunkX, chunkZ));
+        return chunk == null ? null : new BlurpCompressedChunk.Input(chunk);
+    }
+
+    public static CompoundTag finishRead(DataInputStream input) throws IOException {
+        if (!(input instanceof BlurpCompressedChunk.Input compressed)) {
+            throw new IOException("Unexpected memory chunk input: " + input);
+        }
+        return compressed.chunk().decode();
     }
 
     Map<Long, BlurpCompressedChunk> copyChunks() {

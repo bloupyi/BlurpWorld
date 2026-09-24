@@ -16,7 +16,9 @@ It is fully usable on its own. SubServer is an optional integration, not a runti
 - Imported worlds can optionally be linked to their archive. Linked saves replace the archive atomically; linking is disabled by default.
 - Snapshot preparation, rename, import, export, and statistics have asynchronous API variants backed by virtual threads.
 - Newly created worlds use a void generator with a single bedrock spawn platform and do not keep spawn chunks loaded.
-- Creation, restore, and import preload the spawn chunk before reporting completion, avoiding the first-teleport generation stall.
+- When a memory world loads, the server itself brings every chunk visible from spawn (view distance + 1) to full status without ticking it, then hands the area over to the first player that enters. `BlurpWorldManager#spawnWarmup(World)` completes once that area is ready; creation, restore, and import wait for it before reporting completion, so the first join no longer triggers a burst of chunk loads.
+- Memory chunk reads only hand the compressed record to Paper's I/O thread; Zstd and NBT decoding run on the parallel decompression workers.
+- The void generators use a fixed biome, and Bukkit biome providers that ignore `BiomeParameterPoint` no longer pay for vanilla climate sampling, so generating the empty chunks around a map is cheap.
 - Players still inside memory worlds are moved to a persistent fallback world before shutdown player data is saved.
 
 Prepared BlurpWorld dimensions do not create a world folder, `level.dat`, `paper-world.yml`, region files, or saved-data files. Paper's world defaults are materialized in memory, while restored metadata is injected from the snapshot before the `ServerLevel` is constructed.

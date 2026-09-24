@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: bloup <preteseille06@gmail.com>
+Date: Thu, 24 Sep 2026 09:20:24 +0000
+Subject: [PATCH] Warm BlurpWorld spawn chunks
+
+
+diff --git a/ca/spottedleaf/moonrise/paper/util/BaseChunkSystemHooks.java b/ca/spottedleaf/moonrise/paper/util/BaseChunkSystemHooks.java
+index 4baf46256e90a87d684e57ff623076a8e9395f31..4ee3177408ec9ca9372e03724e054cdbf0c7da2f 100644
+--- a/ca/spottedleaf/moonrise/paper/util/BaseChunkSystemHooks.java
++++ b/ca/spottedleaf/moonrise/paper/util/BaseChunkSystemHooks.java
+@@ -156,6 +156,7 @@ public abstract class BaseChunkSystemHooks implements ca.spottedleaf.moonrise.co
+     @Override
+     public void addPlayerToDistanceMaps(final ServerLevel world, final ServerPlayer player) {
+         ((ChunkSystemServerLevel)world).moonrise$getPlayerChunkLoader().addPlayer(player);
++        io.papermc.paper.blurpworld.BlurpSpawnWarmup.onPlayerAdded(world); // BlurpWorld - hand the warmed spawn over to the player
+     }
+ 
+     @Override

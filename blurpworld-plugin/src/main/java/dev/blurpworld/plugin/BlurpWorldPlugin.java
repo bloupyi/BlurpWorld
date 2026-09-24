@@ -25,7 +25,6 @@ import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.command.Command;
@@ -33,7 +32,6 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.world.WorldSaveEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
@@ -41,7 +39,6 @@ import org.jetbrains.annotations.NotNull;
 public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
 
     private static final String ARCHIVE_EXTENSION = ".bws";
-    private static final double TELEPORT_CHUNK_MARGIN = 3.3000001D;
 
     private BlurpWorldManager worlds;
     private Path archiveDirectory;
@@ -50,7 +47,6 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
     private final ConcurrentHashMap<String, CompletableFuture<Void>> linkedWrites = new ConcurrentHashMap<>();
     private final Set<String> suppressedSaveEvents = ConcurrentHashMap.newKeySet();
     private final Set<String> archiveNames = new ConcurrentSkipListSet<>(String.CASE_INSENSITIVE_ORDER);
-    private final Set<String> warmedSpawns = ConcurrentHashMap.newKeySet();
 
     @Override
     public void onEnable() {
@@ -111,11 +107,6 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
                 }
             });
         });
-    }
-
-    @EventHandler
-    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
-        this.releaseSpawnWarmup(event.getPlayer().getWorld());
     }
 
     @Override
@@ -240,7 +231,6 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
         World loaded = Bukkit.getWorld(worldName);
         if (loaded != null) {
             this.evacuate(loaded);
-            this.releaseSpawnWarmup(loaded);
             if (!Bukkit.unloadWorld(loaded, false)) {
                 throw new IllegalStateException("Could not unload " + worldName);
             }
@@ -499,7 +489,6 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
 
     private void unloadNow(CommandSender sender, World world, long started) {
         this.evacuate(world);
-        this.releaseSpawnWarmup(world);
         if (!Bukkit.unloadWorld(world, false)) {
             sender.sendMessage("Could not unload " + world.getName());
             return;
@@ -618,35 +607,8 @@ public final class BlurpWorldPlugin extends JavaPlugin implements Listener {
     }
 
     private CompletableFuture<Void> preloadSpawn(World world) {
-        Location spawn = world.getSpawnLocation();
-        int minX = ((int) Math.floor(spawn.getX() - TELEPORT_CHUNK_MARGIN)) >> 4;
-        int maxX = ((int) Math.floor(spawn.getX() + TELEPORT_CHUNK_MARGIN)) >> 4;
-        int minZ = ((int) Math.floor(spawn.getZ() - TELEPORT_CHUNK_MARGIN)) >> 4;
-        int maxZ = ((int) Math.floor(spawn.getZ() + TELEPORT_CHUNK_MARGIN)) >> 4;
-        List<CompletableFuture<?>> loads = new ArrayList<>((maxX - minX + 1) * (maxZ - minZ + 1));
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                loads.add(world.getChunkAtAsync(x, z, true, true));
-            }
-        }
-        return CompletableFuture.allOf(loads.toArray(CompletableFuture[]::new)).thenCompose(ignored -> this.onMain(() -> {
-            if (!world.getPlayers().isEmpty()) {
-                return null;
-            }
-            for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    world.addPluginChunkTicket(x, z, this);
-                }
-            }
-            this.warmedSpawns.add(normalize(world.getName()));
-            return null;
-        }));
-    }
-
-    private void releaseSpawnWarmup(World world) {
-        if (this.warmedSpawns.remove(normalize(world.getName()))) {
-            world.removePluginChunkTickets(this);
-        }
+        // The server warms the chunks visible from spawn itself when a memory world is created
+        return this.worlds.spawnWarmup(world);
     }
 
     private <T> CompletableFuture<T> onMain(Supplier<T> action) {

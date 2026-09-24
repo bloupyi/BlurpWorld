@@ -90,6 +90,12 @@ public final class CraftBlurpWorldManager implements BlurpWorldManager, AutoClos
     }
 
     @Override
+    public CompletableFuture<Void> spawnWarmup(World world) {
+        Preconditions.checkArgument(this.isMemoryWorld(world), "World %s is not memory-backed", world.getName());
+        return BlurpSpawnWarmup.completion(((org.bukkit.craftbukkit.CraftWorld) world).getHandle());
+    }
+
+    @Override
     public boolean discard(String worldName) {
         Preconditions.checkState(this.server.getWorld(worldName) == null, "World %s must be unloaded before it is discarded", worldName);
         return BlurpMemoryStorageBridge.discard(worldName);

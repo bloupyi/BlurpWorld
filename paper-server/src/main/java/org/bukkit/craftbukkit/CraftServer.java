@@ -1329,6 +1329,9 @@ public final class CraftServer implements Server {
         serverLevel.setSpawnSettings(true);
 
         this.getServer().prepareLevel(serverLevel);
+        if (blurpMemoryWorld) {
+            io.papermc.paper.blurpworld.BlurpSpawnWarmup.start(serverLevel);
+        }
 
         return serverLevel.getWorld();
     }
@@ -1377,6 +1380,7 @@ public final class CraftServer implements Server {
 
         this.worlds.remove(world.getName().toLowerCase(Locale.ROOT));
         this.console.removeLevel(handle);
+        io.papermc.paper.blurpworld.BlurpSpawnWarmup.forget(handle);
         if (this.blurpWorldManager.isPrepared(world.getName())) {
             this.blurpWorldManager.discard(world.getName());
         }

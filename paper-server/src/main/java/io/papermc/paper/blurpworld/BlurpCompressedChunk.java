@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 
@@ -29,5 +30,20 @@ record BlurpCompressedChunk(byte[] data, int rawSize) {
 
     BlurpCompressedChunk copy() {
         return new BlurpCompressedChunk(this.data.clone(), this.rawSize);
+    }
+
+    // Carries an immutable record through Moonrise's read pipeline so decoding runs on its parallel decompression workers.
+    static final class Input extends DataInputStream {
+
+        private final BlurpCompressedChunk chunk;
+
+        Input(BlurpCompressedChunk chunk) {
+            super(InputStream.nullInputStream());
+            this.chunk = chunk;
+        }
+
+        BlurpCompressedChunk chunk() {
+            return this.chunk;
+        }
     }
 }
