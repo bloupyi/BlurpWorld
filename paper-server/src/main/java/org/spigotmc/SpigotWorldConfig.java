@@ -18,7 +18,9 @@ public class SpigotWorldConfig {
         this.legacyWorldName = legacyWorldName;
         this.worldName = worldKey.asString();
         this.config = SpigotConfig.config;
-        this.init();
+        synchronized (SpigotWorldConfig.class) { // BlurpWorld - memory worlds build their config off the server thread
+            this.init();
+        }
     }
 
     public void init() {

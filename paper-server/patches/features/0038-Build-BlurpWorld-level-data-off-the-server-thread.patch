@@ -1,0 +1,185 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: bloup <preteseille06@gmail.com>
+Date: Thu, 24 Sep 2026 11:38:17 +0000
+Subject: [PATCH] Build BlurpWorld level data off the server thread
+
+
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/task/ChunkLoadTask.java b/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/task/ChunkLoadTask.java
+index 7463cf5bf871033a0e5f6d54dd0d427c474d7cd4..2003a0d9da0e54ecd6a6a61788939d9393311247 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/task/ChunkLoadTask.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/scheduling/task/ChunkLoadTask.java
+@@ -339,6 +339,10 @@ public final class ChunkLoadTask extends ChunkProgressionTask {
+             }
+ 
+             try {
++                // BlurpWorld start - an unmodified memory chunk needs no save when it unloads
++                final boolean blurpClean = io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(this.world.getWorld().getName())
++                    && data.getIntOr("DataVersion", -1) == net.minecraft.SharedConstants.getCurrentVersion().dataVersion().version();
++                // BlurpWorld end - an unmodified memory chunk needs no save when it unloads
+                 // run converters
+                 final CompoundTag converted = this.world.getChunkSource().chunkMap.upgradeChunkTag(data);
+ 
+@@ -356,6 +360,9 @@ public final class ChunkLoadTask extends ChunkProgressionTask {
+                     this.world, this.world.getPoiManager(), this.world.getChunkSource().chunkMap.storageInfo(),
+                     new ChunkPos(this.chunkX, this.chunkZ)
+                 );
++                if (blurpClean && chunk != null) {
++                    chunk.tryMarkSaved(); // BlurpWorld - reading marks every chunk unsaved, but this data needed no conversion
++                }
+ 
+                 return new TaskResult<>(new ReadChunk(chunk, chunkData), null);
+             } catch (final Throwable thr2) {
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 879f53a64e3070aca5f6c58a0e200b62c3e51117..f04261c645cd5300f656dcc928f70b69ceff0ffa 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -886,6 +886,14 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     public void prepareLevel(ServerLevel level) {
+         this.forceTicks = true;
+         // CraftBukkit end
++        // BlurpWorld start - memory worlds load the chunks of their saved tickets asynchronously instead of blocking the server thread
++        if (io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(level.getWorld().getName())) {
++            TicketStorage savedTickets = level.getDataStorage().get(TicketStorage.TYPE);
++            if (savedTickets != null) {
++                savedTickets.activateAllDeactivatedTickets();
++            }
++        } else {
++        // BlurpWorld end - memory worlds load the chunks of their saved tickets asynchronously instead of blocking the server thread
+         ChunkLoadCounter chunkLoadCounter = new ChunkLoadCounter();
+ 
+         if (true) { // CraftBukkit
+@@ -905,6 +913,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         } while (chunkLoadCounter.pendingChunks() > 0);
+ 
+         level.levelLoadListener.finish(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS); // Paper - per world load listener
++        } // BlurpWorld
+         level.setSpawnSettings(level.isSpawningMonsters()); // Paper - per level difficulty (from setDifficulty(ServerLevel, Difficulty, boolean))
+         this.updateEffectiveRespawnData();
+         this.forceTicks = false; // CraftBukkit
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 5551279d6cb09e28aca448666d9c4e99174fe00d..c3101ffe7cc00911c893c8fc508d56fc09817706 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -208,6 +208,9 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+         if (!blurpMemoryWorld && randomGenerator instanceof NoiseBasedChunkGenerator noiseGenerator) { // BlurpWorld - skip the noise router
+             // CraftBukkit end
+             this.randomState = RandomState.create(noiseGenerator.generatorSettings().value(), registryAccess.lookupOrThrow(Registries.NOISE), levelSeed);
++        } else if (blurpMemoryWorld) { // BlurpWorld start - built off the server thread
++            this.randomState = io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.randomState(level.getWorld().getName(), levelSeed);
++            // BlurpWorld end - built off the server thread
+         } else {
+             this.randomState = RandomState.create(NoiseGeneratorSettings.dummy(), registryAccess.lookupOrThrow(Registries.NOISE), levelSeed);
+         }
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index c038cb5d40599bb1f5efcfbeb17a4856cac3ab05..981d1440940011355cbb85cba8436692f8731dc5 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -635,6 +635,10 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+         final GameRules gameRules = new GameRules(server.getWorldData().enabledFeatures(), savedDataStorage.computeIfAbsent(net.minecraft.world.level.gamerules.GameRuleMap.TYPE));
+         this.gameRules = gameRules;
+         super(levelData, dimension, server.registryAccess(), levelStem.type(), false, isDebug, biomeZoomSeed, server.getMaxChainedNeighborUpdates(), loadedWorldData.bukkitName(), gen, biomeProvider, env, spigotConfig -> {
++            final io.papermc.paper.configuration.WorldConfiguration preparedConfig = io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.paperConfig(loadedWorldData.bukkitName(), spigotConfig);
++            if (preparedConfig != null) {
++                return preparedConfig;
++            }
+             final io.papermc.paper.configuration.Configurations.ContextMap contextMap = io.papermc.paper.configuration.PaperConfigurations.createWorldContextMap(server.storageSource.getDimensionPath(dimension), dimension.identifier(), spigotConfig, server.registryAccess(), gameRules);
+             return io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(loadedWorldData.bukkitName())
+                 ? server.paperConfigurations.createMemoryWorldConfig(contextMap)
+@@ -645,7 +649,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+         this.typeKey = typeKey;
+         this.bukkitName = loadedWorldData.bukkitName();
+         this.uuid = loadedWorldData.uuid();
+-        this.levelLoadListener = new net.minecraft.server.level.progress.LoggingLevelLoadListener(false, this);
++        this.levelLoadListener = io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(this.bukkitName) ? net.minecraft.server.level.progress.LevelLoadListener.noop() : new net.minecraft.server.level.progress.LoggingLevelLoadListener(false, this); // BlurpWorld - memory worlds load no spawn chunks, skip the progress logging
+         this.worldGenSettings = worldGenSettings;
+         this.scheduledEvents = savedDataStorage.computeIfAbsent(net.minecraft.world.level.timers.TimerQueue.TYPE);
+         // CraftBukkit end
+@@ -695,7 +699,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+             () -> server.overworld().getDataStorage()
+             , savedDataStorage // Paper - initialize SavedDataStorage earlier
+         );
+-        this.chunkSource.getGeneratorState().ensureStructuresGenerated();
++        if (!io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(this.bukkitName)) this.chunkSource.getGeneratorState().ensureStructuresGenerated(); // BlurpWorld - memory worlds never place structures, positions stay lazy
+         this.portalForcer = new PortalForcer(this);
+         if (this.canHaveWeather()) {
+             this.prepareWeather(this.weatherData); // Paper - per-level WeatherData
+diff --git a/net/minecraft/world/attribute/EnvironmentAttributeSystem.java b/net/minecraft/world/attribute/EnvironmentAttributeSystem.java
+index b36a4b6d040b3d7eb8afbdb1c6ab84a756db2f44..27c0f39be2062285e95337f8e84a5bb3d6b77735 100644
+--- a/net/minecraft/world/attribute/EnvironmentAttributeSystem.java
++++ b/net/minecraft/world/attribute/EnvironmentAttributeSystem.java
+@@ -75,11 +75,27 @@ public class EnvironmentAttributeSystem implements EnvironmentAttributeReader {
+         builder.addConstantLayer(dimensionType.attributes());
+     }
+ 
+-    private static void addBiomeLayer(final EnvironmentAttributeSystem.Builder builder, final HolderLookup<Biome> biomes, final BiomeManager biomeManager) {
+-        Stream<EnvironmentAttribute<?>> attributesProvidedByBiomes = biomes.listElements()
++    // BlurpWorld start - the attributes provided by biomes only depend on the registry, list them once
++    private record BiomeAttributes(HolderLookup<Biome> biomes, java.util.List<EnvironmentAttribute<?>> attributes) {}
++    private static volatile @org.jspecify.annotations.Nullable BiomeAttributes cachedBiomeAttributes;
++
++    private static java.util.List<EnvironmentAttribute<?>> attributesProvidedByBiomes(final HolderLookup<Biome> biomes) {
++        final BiomeAttributes current = cachedBiomeAttributes;
++        if (current != null && current.biomes() == biomes) {
++            return current.attributes();
++        }
++        final java.util.List<EnvironmentAttribute<?>> attributes = biomes.listElements()
+             .flatMap(biome -> biome.value().getAttributes().keySet().stream())
+-            .distinct();
+-        attributesProvidedByBiomes.forEach(attribute -> addBiomeLayerForAttribute(builder, (EnvironmentAttribute<?>)attribute, biomeManager));
++            .<EnvironmentAttribute<?>>map(attribute -> attribute)
++            .distinct()
++            .toList();
++        cachedBiomeAttributes = new BiomeAttributes(biomes, attributes);
++        return attributes;
++    }
++    // BlurpWorld end - the attributes provided by biomes only depend on the registry, list them once
++
++    private static void addBiomeLayer(final EnvironmentAttributeSystem.Builder builder, final HolderLookup<Biome> biomes, final BiomeManager biomeManager) {
++        attributesProvidedByBiomes(biomes).forEach(attribute -> addBiomeLayerForAttribute(builder, attribute, biomeManager)); // BlurpWorld
+     }
+ 
+     private static <Value> void addBiomeLayerForAttribute(
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 9286d9bcf3ec4069e77d3133f3d7bf29b2370c5a..d096bbcf096601b98ec646612eac7a94b3ee89ba 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -851,7 +851,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+         this.sectionsCount = this.maxSectionY - this.minSectionY + 1;
+         // Paper end - getblock optimisations - cache world height/sections
+         final org.bukkit.NamespacedKey worldKey = CraftNamespacedKey.fromMinecraft(dimension.identifier()); // Paper
+-        this.spigotConfig = new org.spigotmc.SpigotWorldConfig(bukkitName, worldKey); // Spigot
++        this.spigotConfig = io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.isPreparedWorld(bukkitName) ? io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.spigotConfig(bukkitName, worldKey) : new org.spigotmc.SpigotWorldConfig(bukkitName, worldKey); // Spigot // BlurpWorld - reuse the config built off the server thread
+         this.paperConfig = paperWorldConfigCreator.apply(this.spigotConfig); // Paper - create paper world config
+         this.generator = generator;
+         this.world = new CraftWorld((ServerLevel) this, worldKey, biomeProvider, environment);
+diff --git a/net/minecraft/world/level/chunk/PalettedContainerFactory.java b/net/minecraft/world/level/chunk/PalettedContainerFactory.java
+index cd20a791b101548367ed53080f78e78bc7aa5d39..55e5176b5912132f6666fcb51dcd42bd4a4a6910 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainerFactory.java
++++ b/net/minecraft/world/level/chunk/PalettedContainerFactory.java
+@@ -20,10 +20,25 @@ public record PalettedContainerFactory(
+     Codec<PalettedContainerRO<Holder<Biome>>> biomeContainerCodec
+     , Codec<PalettedContainer<Holder<Biome>>> biomeContainerRWCodec // Paper
+ ) {
++    // BlurpWorld start - the factory only depends on the biome registry, share it between levels and chunks
++    private record Cached(Registry<Biome> biomes, PalettedContainerFactory factory) {}
++    private static volatile @org.jspecify.annotations.Nullable Cached cached;
++
+     public static PalettedContainerFactory create(final RegistryAccess registries) {
++        final Registry<Biome> biomes = registries.lookupOrThrow(Registries.BIOME);
++        final Cached current = cached;
++        if (current != null && current.biomes() == biomes) {
++            return current.factory();
++        }
++        final PalettedContainerFactory factory = create(biomes);
++        cached = new Cached(biomes, factory);
++        return factory;
++    }
++
++    private static PalettedContainerFactory create(final Registry<Biome> biomes) {
++        // BlurpWorld end - the factory only depends on the biome registry, share it between levels and chunks
+         Strategy<BlockState> blockStateStrategy = Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY);
+         BlockState defaultBlockState = Blocks.AIR.defaultBlockState();
+-        Registry<Biome> biomes = registries.lookupOrThrow(Registries.BIOME);
+         Strategy<Holder<Biome>> biomeStrategy = Strategy.createForBiomes(biomes.asHolderIdMap());
+         Holder.Reference<Biome> defaultBiome = biomes.getOrThrow(Biomes.PLAINS);
+         return new PalettedContainerFactory(

@@ -63,7 +63,10 @@ public final class CraftBlurpWorldManager implements BlurpWorldManager, AutoClos
         if (snapshot == null) {
             throw new IllegalArgumentException("Unknown snapshot: " + snapshotId);
         }
-        return CompletableFuture.runAsync(() -> BlurpMemoryStorageBridge.prepare(worldName, snapshot), this.asyncExecutor);
+        return CompletableFuture.runAsync(() -> {
+            BlurpMemoryStorageBridge.prepare(worldName, snapshot);
+            BlurpMemoryStorageBridge.prepareLevel(worldName);
+        }, this.asyncExecutor);
     }
 
     @Override
@@ -75,6 +78,7 @@ public final class CraftBlurpWorldManager implements BlurpWorldManager, AutoClos
         return CompletableFuture.supplyAsync(() -> {
             BlurpSnapshotData snapshot = BlurpSnapshotCodec.decode(encoded);
             BlurpMemoryStorageBridge.prepare(worldName, snapshot);
+            BlurpMemoryStorageBridge.prepareLevel(worldName);
             return snapshot.metadata();
         }, this.asyncExecutor);
     }

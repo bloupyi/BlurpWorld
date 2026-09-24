@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
+import org.jspecify.annotations.Nullable;
 
 final class BlurpMemoryWorldStorage {
 
@@ -28,6 +29,8 @@ final class BlurpMemoryWorldStorage {
     BlurpMemoryRegionStore store(String key) {
         return this.stores.computeIfAbsent(key, ignored -> new BlurpMemoryRegionStore(this, BlurpMemoryRegionStore.CHUNK_STORE.equals(key)));
     }
+
+    volatile @Nullable BlurpPreparedLevel preparedLevel;
 
     Map<Identifier, CompoundTag> savedData() {
         return this.savedData;

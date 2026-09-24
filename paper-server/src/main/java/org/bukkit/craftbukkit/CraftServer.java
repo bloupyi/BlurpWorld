@@ -1234,7 +1234,7 @@ public final class CraftServer implements Server {
         if (blurpMemoryWorld) {
             loadedWorldData = new PaperWorldLoader.LoadedWorldData(
                 loadedWorldData.bukkitName(),
-                UUID.randomUUID(),
+                io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.levelUuid(name),
                 loadedWorldData.pdc(),
                 loadedWorldData.levelOverrides()
             );
@@ -1319,6 +1319,9 @@ public final class CraftServer implements Server {
             loadedWorldData
         );
 
+        if (blurpMemoryWorld) {
+            io.papermc.paper.blurpworld.BlurpMemoryStorageBridge.levelCreated(name);
+        }
         if (!(this.worlds.containsKey(name.toLowerCase(Locale.ROOT)))) {
             return null;
         }
